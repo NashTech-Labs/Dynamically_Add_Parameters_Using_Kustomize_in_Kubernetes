@@ -1,0 +1,81 @@
+trigger: none
+
+name: sampleApplication-deploy
+
+parameters:
+ 
+  - name: Namespace
+    displayName: "Name of Namespace"
+    type: string
+    default: 'dev'   
+
+  - name: REPLICA_COUNT_VV
+    displayName: "Replica count for AKS Manifest"
+    type : number
+    default: '3'
+
+  - name: IMAGE_NAME_VV
+    displayName: "Image Name for AKS Manifest"
+    type: string
+    default: '<acr-url-of-image-with-tag>'
+ 
+
+stages: 
+- stage: Deploy
+  displayName: Deploy stage  
+  jobs:
+   
+    strategy:
+      runOnce:
+        deploy:  
+          steps: 
+            - checkout: self
+                           
+            - script: |
+                  echo "Check Kubectl and Kustomize version"
+                  kubectl version -o json 
+                  echo "Check Kubelogin version"
+                  kubelogin --version
+                  echo "AZ Version"
+                  az version
+                  echo "Powershell Version"
+                  pwsh --version
+              displayName: "Dependencies Check"
+
+            - script: |
+                   az login --service-principal -u <client-id-of-your-account> -p <client-secret-of-your-account> --tenant <tenant-id-of-your-account>
+              displayName: "Login through Service Principal"
+      
+            - script: |   
+                  az account set --subscription <subscription-id-of-your-account>
+                  az account show
+              displayName: "Set Subscription"
+       
+            - script: |      
+                  kubelogin convert-kubeconfig -l azurecli    
+                  az aks get-credentials --name <aks-name-of-your-account> --resource-group <aks-rg-of-your-account> --admin --overwrite-existing 
+              displayName: "AKS Configutation commands"
+      
+            - script: |
+                  kubectl create namespace ${{parameters.Namespace}}
+                  kubectl get namespace
+              displayName: "k8 Create namespace"
+              
+            - task: PowerShell@2
+              displayName: 'Concatenate Manifests with Rendered Manifests'
+              inputs:
+                targetType: 'inline'
+                script: |
+                  $bakeManifestsContent = Get-Content "$(System.DefaultWorkingDirectory)/k8s/base/deployment.yml" -Raw
+                  $renderedManifestsContent = $bakeManifestsContent -replace '\$\{REPLICA_COUNT\}','${{parameters.REPLICA_COUNT_VV}}' `
+                                                                  -replace '\$\{IMAGE_NAME\}','${{parameters.IMAGE_NAME_VV}}'
+
+                  # Save the rendered manifests to a file
+                  $renderedManifestsContent | Out-File "$(System.DefaultWorkingDirectory)/k8s/base/deployment.yml" -Encoding UTF8
+                  ls
+                  cat $(System.DefaultWorkingDirectory)/k8s/base/deployment.yml
+
+
+            - script: |
+                  kubectl apply -k $(System.DefaultWorkingDirectory)/k8s/base -n ${{parameters.Namespace}}
+              displayName: "k8 Deployment"
