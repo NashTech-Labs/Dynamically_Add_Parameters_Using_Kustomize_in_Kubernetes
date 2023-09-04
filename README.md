@@ -7,7 +7,7 @@ Here, In this template, we will pass the parameters for the kubernetes manifest 
 
 
 * Azure Account
-* Install as mentioned in the `rendered.yml` pipeline step.
+* Install Dependencies as mentioned in the `rendered.yml` pipeline step.
 
 ---
 ### Steps
